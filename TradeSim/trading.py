@@ -1,6 +1,6 @@
 import heapq
 import time
-import os 
+import os
 import sys
 
 import certifi
@@ -15,7 +15,7 @@ from utilities.common_utils import weighted_majority_decision_and_median_quantit
 from config import API_KEY, API_SECRET, MONGO_URL
 
 from control import suggestion_heap_limit, trade_asset_limit, trade_liquidity_limit, train_tickers
-from utilities.ranking_trading_utils import ( 
+from utilities.ranking_trading_utils import (
     get_latest_price,
     market_status,
     place_order,
@@ -24,6 +24,7 @@ from utilities.ranking_trading_utils import (
 # from strategies.categorise_talib_indicators_vect import strategies
 from strategies.talib_indicators import get_data, simulate_strategy
 from utilities.logging import setup_logging
+from utilities.llm_news_analyst import NewsAnalyst
 logger = setup_logging(__name__)
 
 buy_heap = []
@@ -31,6 +32,8 @@ suggestion_heap = []
 sold = False
 
 ca = certifi.where()
+
+news_bot = NewsAnalyst()
 
 def process_ticker(ticker: str, trading_client: TradingClient, mongo_client: MongoClient, indicator_periods: dict, strategy_to_coefficient: dict) -> None:  
     """Processes a single ticker symbol, making trading decisions based on strategy evaluations and risk management.
@@ -129,19 +132,39 @@ def process_ticker(ticker: str, trading_client: TradingClient, mongo_client: Mon
         decisions_and_quantities.append((decision, quantity, weight))
 
     # 4) weighted majority decision…
-    decision, quantity, buy_w, sell_w, hold_w = weighted_majority_decision_and_median_quantity(decisions_and_quantities)
+    math_decision, quantity, buy_w, sell_w, hold_w = weighted_majority_decision_and_median_quantity(decisions_and_quantities)
     print(
-        f"Ticker: {ticker}, Decision: {decision}, Quantity: {quantity}, Weights: Buy: {buy_w}, Sell: {sell_w}, Hold: {hold_w}"
+        f"Ticker: {ticker}, Decision: {math_decision}, Quantity: {quantity}, Weights: Buy: {buy_w}, Sell: {sell_w}, Hold: {hold_w}"
     )
 
+    final_decision = math_decision
+    news_score = 0.0
+    news_reason = "News analysis unavailable."
+    if news_bot:
+        logger.info(f"Running News Analysis for {ticker}...")
+        news_score, news_reason = news_bot.get_aggregated_sentiment(ticker)
+        logger.info(f"News Score: {news_score} | Reason: {news_reason}")
+        if math_decision == "buy" and news_score < -0.3:
+            logger.warning(
+                f"⚠️ VETO: Math says BUY, but News is Negative ({news_score}). Holding."
+            )
+            final_decision = "hold"
+        elif math_decision == "sell" and news_score > 0.3:
+            logger.warning(
+                f"⚠️ VETO: Math says SELL, but News is Positive ({news_score}). Holding."
+            )
+            final_decision = "hold"
+    else:
+        logger.warning("News analyst unavailable. Using math decision only.")
+
     if (
-        decision == "buy"
+        final_decision == "buy"
         and float(account.cash) > trade_liquidity_limit
         and (((quantity + portfolio_qty) * current_price) / portfolio_value)
         < trade_asset_limit
     ):
         heapq.heappush(buy_heap,(-(buy_w - (sell_w + (hold_w * 0.5))),quantity,ticker))
-    elif decision == "sell" and portfolio_qty > 0:
+    elif final_decision == "sell" and portfolio_qty > 0:
         print(f"Executing SELL order for {ticker}")
         print(f"Executing quantity of {quantity} for {ticker}")
         sold = True
@@ -155,7 +178,8 @@ def process_ticker(ticker: str, trading_client: TradingClient, mongo_client: Mon
         )
         logger.info(f"Executed SELL order for {ticker}: {order}")
     elif (
-        portfolio_qty == 0.0
+        final_decision == "hold"
+        and portfolio_qty == 0.0
         and buy_w > sell_w
         and (((quantity + portfolio_qty) * current_price) / portfolio_value)
         < trade_asset_limit
