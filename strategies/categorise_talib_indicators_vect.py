@@ -298,9 +298,9 @@ strategies = (
     overlap_studies
     + momentum_indicators
     + volume_indicators
-    + cycle_indicators
-    + price_transforms
+    # + cycle_indicators
+    # + price_transforms
     + volatility_indicators
-    + pattern_recognition
+    # + pattern_recognition
     + statistical_functions
 )

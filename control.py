@@ -46,7 +46,7 @@ benchmark asset is what benchmark you want to compare to - typically SPY, QQQ, D
 """
 
 
-mode = "train"
+mode = "live"
 
 benchmark_asset = "QQQ"
 """
@@ -65,7 +65,7 @@ train_period_end = "2024-01-15"
 test_period_start = "2024-01-16"
 test_period_end = "2025-01-30"
 
-train_tickers = []
+train_tickers = ["AAPL", "NVDA", "TSLA"]
 
 """
 train_time_delta_mode can be multiplicative, additive, or balanced.
@@ -206,7 +206,7 @@ trade_liquidity_limit is the amount of money you are telling the bot to reserve 
 All bots start with a default of 50000. This is for the trading client. Please try not to change this.
 If you do, the suggestion for bottom limit is 20% of the portfolio value.
 """
-trade_liquidity_limit = 15000
+trade_liquidity_limit = 1000
 
 """
 trade_asset_limit to portfolio is how much asset you are allowed to hold in comparison to portfolio value for the trading client
