@@ -18,19 +18,21 @@ class NewsAnalyst:
     def __init__(self) -> None:
         self.newsdata_key = os.getenv("NEWSDATA_API_KEY")
         self.marketaux_key = os.getenv("MARKETAUX_API_KEY")
-        self.deepseek_api_key = os.getenv("DEEPSEEK_API_KEY")
+        self.llm_api_key = os.getenv("LLM_API_KEY")
+        self.llm_api_model = os.getenv("LLM_API_MODEL", "deepseek-chat")
+        self.llm_api_base = os.getenv("LLM_API_BASE", "https://api.deepseek.com/v1/")
 
         self.client: OpenAI | None = None
-        if self.deepseek_api_key:
+        if self.llm_api_key:
             try:
                 self.client = OpenAI(
-                    api_key=self.deepseek_api_key,
-                    base_url="https://api.deepseek.com",
+                    api_key=self.llm_api_key,
+                    base_url=self.llm_api_base.rstrip("/"),
                 )
             except Exception as exc:  # pragma: no cover - defensive logging
-                logger.warning("Failed to initialize DeepSeek client: %s", exc)
+                logger.warning("Failed to initialize LLM client: %s", exc)
         else:
-            logger.warning("DEEPSEEK_API_KEY not set. News sentiment will be neutral.")
+            logger.warning("LLM_API_KEY not set. News sentiment will be neutral.")
 
     def fetch_marketaux(self, ticker: str) -> List[str]:
         """Fetches finance-specific news from MarketAux."""
@@ -105,7 +107,7 @@ class NewsAnalyst:
 
         try:
             response = self.client.chat.completions.create(
-                model="deepseek-chat",
+                model=self.llm_api_model,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": f"Asset: {ticker}\nNews:\n{news_text}"},

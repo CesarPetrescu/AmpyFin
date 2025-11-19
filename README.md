@@ -144,17 +144,44 @@ You need to sign up for the following services to obtain API keys:
 
 - [Alpaca](https://alpaca.markets/) - For trading execution
 - [Weights & Biases](https://wandb.ai/) - For experiment tracking
+- Any OpenAI-compatible LLM endpoint (e.g., [DeepSeek](https://platform.deepseek.com/)) - News analyst access
+- [MarketAux](https://www.marketaux.com/) and/or [NewsData](https://newsdata.io/) - Newswire feeds for sentiment vetoes
 
-Create a `.env` file based on the template:
+Use the new `.env.example` template to make sure every required secret is set:
 
-```python
-API_KEY = "your_alpaca_api_key"
-API_SECRET = "your_alpaca_secret_key"
-BASE_URL = "https://paper-api.alpaca.markets"  # Paper trading (safe for testing)
-# BASE_URL = "https://api.alpaca.markets"      # Live trading (uses real money)
-WANDB_API_KEY = "your_wandb_api_key"
-MONGO_URL = "your_mongo_connection_string"
+```bash
+cp .env.example .env
+# then edit .env with your API keys and Mongo connection string
 ```
+
+The template includes the exact variables the platform reads at runtime:
+
+```ini
+API_KEY="your_alpaca_api_key"
+API_SECRET="your_alpaca_secret_key"
+BASE_URL="https://paper-api.alpaca.markets"  # Paper trading (safe for testing)
+# BASE_URL="https://api.alpaca.markets"      # Live trading (uses real money)
+WANDB_API_KEY="your_wandb_api_key"
+MONGO_URL="your_mongo_connection_string"
+LLM_API_KEY="sk-..."              # News Analyst LLM key
+LLM_API_MODEL="deepseek-chat"     # Model name exposed by your provider
+LLM_API_BASE="https://.../v1/"    # Base URL for any OpenAI-compatible API
+MARKETAUX_API_KEY="your_key"       # Primary news feed
+NEWSDATA_API_KEY="your_key"        # Backup news feed
+```
+
+### Where to get each key / data feed
+
+| Variable             | Purpose                              | Where to get it |
+| -------------------- | ------------------------------------ | --------------- |
+| `API_KEY`, `API_SECRET`, `BASE_URL` | Alpaca brokerage credentials for order execution (paper or live). | Create an account at [Alpaca](https://alpaca.markets/) → “Paper Trading” dashboard → Generate API keys. |
+| `WANDB_API_KEY`      | Experiment tracking dashboard.       | From your [Weights & Biases](https://wandb.ai/) user settings page. |
+| `MONGO_URL`          | Persistent storage for rankings, holdings, and news sentiment caches. | Either provision a free [MongoDB Atlas](https://www.mongodb.com/cloud/atlas) cluster or point to your own MongoDB instance. |
+| `LLM_API_KEY`        | LLM “brain” that analyzes aggregated news headlines. | Provide any OpenAI-compatible key (e.g., create one at [DeepSeek](https://platform.deepseek.com/) or another hosted endpoint). |
+| `LLM_API_MODEL`      | Specifies which deployed chat/completions model to query. | Use the exact model identifier returned by your provider (e.g., `deepseek-chat`, `gpt-4o-mini`, etc.). |
+| `LLM_API_BASE`       | Base URL for the OpenAI-compatible endpoint (must include `/v1/`). | Copy the HTTPS base from your provider’s docs (e.g., `https://api.deepseek.com/v1/`, `https://your-proxy.example.com/v1/`). |
+| `MARKETAUX_API_KEY`  | Primary newswire feed used to gather fresh headlines per ticker. | Request an API key at [MarketAux](https://www.marketaux.com/). |
+| `NEWSDATA_API_KEY`   | Backup newswire feed to keep sentiment online when MarketAux rate limits. | Obtain a key from [NewsData.io](https://newsdata.io/). |
 
 > ⚠️ **IMPORTANT**: The default configuration uses Alpaca's paper trading environment. To switch to live trading (using real money), change the BASE_URL to "https://api.alpaca.markets". Only do this once you've thoroughly tested your strategies and understand the risks involved.
 
@@ -165,6 +192,36 @@ python setup.py
 ```
 
 This initializes the database structure required for AmpyFin.
+
+## Post-Update Initialization Checklist
+
+Recent updates introduced a new LLM-powered news analyst, refreshed strategy list, and cleaned MongoDB collections. Follow this checklist **after pulling the latest code** to keep your environment in sync:
+
+1. **Refresh dependencies**
+   ```bash
+   pip install -r requirements.txt
+   ```
+   This installs the new `openai` (OpenAI-compatible) client and any additional packages.
+
+2. **Re-run the database setup**
+   ```bash
+   python setup.py
+   ```
+   Ensures `algorithm_holdings` and `points_tally` match the trimmed strategy list.
+
+3. **Calibrate ranking scores**
+   ```bash
+   python TradeSim/ranking.py
+   ```
+   Let it run for 15–30 minutes (or until you see “Successfully updated ranks”). This backfills MongoDB with current performance scores so math strategies have meaningful weights.
+
+4. **Start live trading with veto protection**
+   ```bash
+   python TradeSim/trading.py
+   ```
+   Watch for logs such as `Processing ticker`, `Running News Analysis`, `News Score`, and potential `⚠️ VETO` messages to confirm that the News Analyst and math ensemble are cooperating.
+
+> 💡 **Tip:** Repeat steps 1–3 whenever strategies are added/removed or new dependencies are introduced. Periodically re-run `ranking.py` in the background to keep scores fresh.
 
 ## Usage
 
